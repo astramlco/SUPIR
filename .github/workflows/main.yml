@@ -1,0 +1,32 @@
+name: Push Replicate Model
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:
+        description: 'The name of the Replicate model to publish, e.g `username/modelname`. The model must already exist on Replicate.'
+        required: true
+
+jobs:
+  push_to_replicate:
+    name: Push to Replicate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk pace
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          docker-images: false
+
+      - name: Check out code
+        uses: actions/checkout@v4
+        
+      - name: Setup Cog
+        uses: replicate/setup-cog@v2
+        with:
+          cog-version: "v0.14.4"
+          token: ${{ secrets.REPLICATE_CLI_AUTH_TOKEN }}
+          install-cuda: true
+
+      - name: Push to Replicate
+        run: cog push r8.im/${{ inputs.model_name || vars.REPLICATE_MODEL }}
