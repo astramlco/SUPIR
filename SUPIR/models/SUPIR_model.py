@@ -7,6 +7,7 @@ import random
 from SUPIR.utils.colorfix import wavelet_reconstruction, adaptive_instance_normalization
 from pytorch_lightning import seed_everything
 from torch.nn.functional import interpolate
+from SUPIR.utils.tilevae import VAEHook
 
 class SUPIRModel(DiffusionEngine):
     def __init__(self, control_stage_config, ae_dtype='fp32', diffusion_dtype='fp32', p_p='', n_p='', *args, **kwargs):
@@ -102,6 +103,7 @@ class SUPIRModel(DiffusionEngine):
             self.sampler_config.params.guider_config.params.scale_min = cfg_scale
             self.sampler_config.params.guider_config.params.scale = cfg_scale_start
         else:
+            self.sampler_config.params.guider_config.params.scale_min = cfg_scale
             self.sampler_config.params.guider_config.params.scale = cfg_scale
         self.sampler_config.params.restore_cfg = restoration_scale
         self.sampler_config.params.s_churn = s_churn
@@ -113,25 +115,10 @@ class SUPIRModel(DiffusionEngine):
         seed_everything(seed)
 
         _z = self.encode_first_stage_with_denoise(x, use_sample=False)
-
         x_stage1 = self.decode_first_stage(_z)
-        # x_stage1 = interpolate(x_stage1, scale_factor=scale_factor, mode='bilinear', antialias=True)
-        # _z = self.encode_first_stage_with_denoise(x_stage1)
-
         z_stage1 = self.encode_first_stage(x_stage1)
 
-        batch = {}
-        batch['txt'] = [''.join([_p, p_p]) for _p in p]
-        batch['original_size_as_tuple'] = torch.tensor([1024, 1024]).repeat(N, 1).to(x.device)
-        batch['crop_coords_top_left'] = torch.tensor([0, 0]).repeat(N, 1).to(x.device)
-        batch['target_size_as_tuple'] = torch.tensor([1024, 1024]).repeat(N, 1).to(x.device)
-        batch['aesthetic_score'] = torch.tensor([9.0]).repeat(N, 1).to(x.device)
-        batch['control'] = _z
-
-        batch_uc = copy.deepcopy(batch)
-        batch_uc['txt'] = [n_p for _ in p]
-
-        c, uc = self.conditioner.get_unconditional_conditioning(batch, batch_uc)
+        c, uc = self.prepare_condition(_z, p, p_p, n_p, N)
 
         denoiser = lambda input, sigma, c, control_scale: self.denoiser(
             self.model, input, sigma, c, control_scale, **kwargs
@@ -147,6 +134,49 @@ class SUPIRModel(DiffusionEngine):
         elif color_fix_type == 'AdaIn':
             samples = adaptive_instance_normalization(samples, x_stage1)
         return samples
+
+    def init_tile_vae(self, encoder_tile_size=512, decoder_tile_size=64):
+        self.first_stage_model.denoise_encoder.original_forward = self.first_stage_model.denoise_encoder.forward
+        self.first_stage_model.encoder.original_forward = self.first_stage_model.encoder.forward
+        self.first_stage_model.decoder.original_forward = self.first_stage_model.decoder.forward
+        self.first_stage_model.denoise_encoder.forward = VAEHook(
+            self.first_stage_model.denoise_encoder, encoder_tile_size, is_decoder=False, fast_decoder=False,
+            fast_encoder=False, color_fix=False, to_gpu=True)
+        self.first_stage_model.encoder.forward = VAEHook(
+            self.first_stage_model.encoder, encoder_tile_size, is_decoder=False, fast_decoder=False,
+            fast_encoder=False, color_fix=False, to_gpu=True)
+        self.first_stage_model.decoder.forward = VAEHook(
+            self.first_stage_model.decoder, decoder_tile_size, is_decoder=True, fast_decoder=False,
+            fast_encoder=False, color_fix=False, to_gpu=True)
+
+    def prepare_condition(self, _z, p, p_p, n_p, N):
+        batch = {}
+        batch['original_size_as_tuple'] = torch.tensor([1024, 1024]).repeat(N, 1).to(_z.device)
+        batch['crop_coords_top_left'] = torch.tensor([0, 0]).repeat(N, 1).to(_z.device)
+        batch['target_size_as_tuple'] = torch.tensor([1024, 1024]).repeat(N, 1).to(_z.device)
+        batch['aesthetic_score'] = torch.tensor([9.0]).repeat(N, 1).to(_z.device)
+        batch['control'] = _z
+
+        batch_uc = copy.deepcopy(batch)
+        batch_uc['txt'] = [n_p for _ in p]
+
+        if not isinstance(p[0], list):
+            batch['txt'] = [''.join([_p, p_p]) for _p in p]
+            with torch.cuda.amp.autocast(dtype=self.ae_dtype):
+                c, uc = self.conditioner.get_unconditional_conditioning(batch, batch_uc)
+        else:
+            assert len(p) == 1, 'Support bs=1 only for local prompt conditioning.'
+            p_tiles = p[0]
+            c = []
+            for i, p_tile in enumerate(p_tiles):
+                batch['txt'] = [''.join([p_tile, p_p])]
+                with torch.cuda.amp.autocast(dtype=self.ae_dtype):
+                    if i == 0:
+                        _c, uc = self.conditioner.get_unconditional_conditioning(batch, batch_uc)
+                    else:
+                        _c, _ = self.conditioner.get_unconditional_conditioning(batch, None)
+                c.append(_c)
+        return c, uc
 
 
 if __name__ == '__main__':
