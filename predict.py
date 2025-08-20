@@ -26,9 +26,7 @@ LLAVA_CLIP_URL = (
 #SDXL_URL = "https://weights.replicate.delivery/default/stable-diffusion-xl-base-1.0/sd_xl_base_1.0_0.9vae.safetensors"
 SDXL_URL = "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
 SDXL_CLIP1_URL = "https://weights.replicate.delivery/default/clip-vit-large-patch14.tar"
-SDXL_CLIP2_URL = (
-    "https://weights.replicate.delivery/default/CLIP-ViT-bigG-14-laion2B-39B-b160k.tar"
-)
+SDXL_CLIP2_URL = "https://weights.replicate.delivery/default/CLIP-ViT-bigG-14-laion2B-39B-b160k.tar"
 
 MODEL_CACHE = "/opt/data/private/AIGC_pretrain/"  # Follow the default in CKPT_PTH.py
 LLAVA_CLIP_PATH = CKPT_PTH.LLAVA_CLIP_PATH
@@ -75,8 +73,8 @@ class Predictor(BasePredictor):
             download_weights(SDXL_CLIP1_URL, SDXL_CLIP1_PATH)
         if not os.path.exists(SDXL_CKPT):
             download_weights(SDXL_URL, SDXL_CKPT, extract=False)
-        if not os.path.exists(SDXL_CKPT):
-            download_weights(SDXL_CLIP2_URL, SDXL_CKPT)
+        if not os.path.exists(SDXL_CLIP2_CACHE):
+            download_weights(SDXL_CLIP2_URL, SDXL_CLIP2_CACHE)
 
         self.supir_device = "cuda:0"
         self.llava_device = "cuda:0"
