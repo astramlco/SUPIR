@@ -38,6 +38,7 @@ build:
     - facexlib==0.3.0
     - k-diffusion==0.1.1.post1
     - diffusers==0.16.1
+    - huggingface-hub==0.25.2
   run:
     - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.6.0/pget_linux_x86_64" && chmod +x /usr/local/bin/pget
 predict: "predict.py:Predictor"
