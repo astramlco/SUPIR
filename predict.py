@@ -38,6 +38,10 @@ SDXL_CKPT = f"{MODEL_CACHE}/SDXL_cache/sd_xl_base_1.0_0.9vae.safetensors"
 SUPIR_CKPT_F = f"{MODEL_CACHE}/SUPIR_cache/SUPIR-v0F.ckpt"
 SUPIR_CKPT_Q = f"{MODEL_CACHE}/SUPIR_cache/SUPIR-v0Q.ckpt"
 
+LOADING_HALF_PARAMS = True
+USE_TILE_VAE = True
+USE_LLAVA = False
+
 
 def download_weights(url, dest, extract=True):
     start = time.time()
@@ -60,8 +64,6 @@ class Predictor(BasePredictor):
         ]:
             if not os.path.exists(model_dir):
                 os.makedirs(model_dir)
-        if not os.path.exists(SUPIR_CKPT_Q):
-            download_weights(SUPIR_v0Q_URL, SUPIR_CKPT_Q, extract=False)
         if not os.path.exists(SUPIR_CKPT_F):
             download_weights(SUPIR_v0F_URL, SUPIR_CKPT_F, extract=False)
         if not os.path.exists(LLAVA_MODEL_PATH):
@@ -80,27 +82,25 @@ class Predictor(BasePredictor):
         ae_dtype = "bf16"  # Inference data type of AutoEncoder
         diff_dtype = "bf16"  # Inference data type of Diffusion
 
-        self.models = {
-            k: create_SUPIR_model("options/SUPIR_v0.yaml", SUPIR_sign=k).to(
-                self.supir_device
-            )
-            for k in ["Q", "F"]
-        }
+        model = create_SUPIR_model("options/SUPIR_v0_tiled.yaml", SUPIR_sign='Q')
+        if LOADING_HALF_PARAMS:
+            model = model.half()
+        if USE_TILE_VAE:
+            model = model.init_tile_vae(encoder_tile_size=512, decoder_tile_size=64)
+        self.model = model.to(self.supir_device)
+        self.model.first_stage_model.denoise_encoder_s1 = copy.deepcopy(self.model.first_stage_model.denoise_encoder)
 
-        for k in ["Q", "F"]:
-            self.models[k].ae_dtype = convert_dtype(ae_dtype)
-            self.models[k].model.dtype = convert_dtype(diff_dtype)
+        self.model.ae_dtype = convert_dtype(ae_dtype)
+        self.model.model.dtype = convert_dtype(diff_dtype)
 
         # load LLaVA
-        self.llava_agent = LLavaAgent(LLAVA_MODEL_PATH, device=self.llava_device)
+        if USE_LLAVA:
+            self.llava_agent = LLavaAgent(LLAVA_MODEL_PATH, device=self.llava_device, load_8bit=args.load_8bit_llava, load_4bit=False)
+        else:
+            self.llava_agent = None
 
     def predict(
         self,
-        model_name: str = Input(
-            description="Choose a model. SUPIR-v0Q is the default training settings with paper. SUPIR-v0F is high generalization and high image quality in most cases. Training with light degradation settings. Stage1 encoder of SUPIR-v0F remains more details when facing light degradations.",
-            choices=["SUPIR-v0Q", "SUPIR-v0F"],
-            default="SUPIR-v0Q",
-        ),
         image: Path = Input(description="Low quality input image."),
         upscale: int = Input(
             description="Upsampling ratio of given inputs.", default=1
@@ -113,9 +113,6 @@ class Predictor(BasePredictor):
             ge=1,
             le=500,
             default=50,
-        ),
-        use_llava: bool = Input(
-            description="Use LLaVA model to get captions.", default=True
         ),
         a_prompt: str = Input(
             description="Additive positive prompt for the inputs.",
@@ -171,24 +168,22 @@ class Predictor(BasePredictor):
             seed = int.from_bytes(os.urandom(2), "big")
         print(f"Using seed: {seed}")
 
-        model = self.models["Q"] if model_name == "SUPIR-v0Q" else self.models["F"]
-
         lq_img = Image.open(str(image))
         lq_img, h0, w0 = PIL2Tensor(lq_img, upsacle=upscale, min_size=min_size)
         lq_img = lq_img.unsqueeze(0).to(self.supir_device)[:, :3, :, :]
 
         # step 1: Pre-denoise for LLaVA)
-        clean_imgs = model.batchify_denoise(lq_img)
+        clean_imgs = self.model.batchify_denoise(lq_img)
         clean_PIL_img = Tensor2PIL(clean_imgs[0], h0, w0)
 
         # step 2: LLaVA
         captions = [""]
-        if use_llava:
+        if USE_LLAVA and (self.llava_agent is not None):
             captions = self.llava_agent.gen_image_caption([clean_PIL_img])
             print(f"Captions from LLaVA: {captions}")
 
         # step 3: Diffusion Process
-        samples = model.batchify_sample(
+        samples = self.model.batchify_sample(
             lq_img,
             captions,
             num_steps=edm_steps,
