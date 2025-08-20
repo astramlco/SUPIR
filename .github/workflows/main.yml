@@ -20,13 +20,13 @@ jobs:
 
       - name: Check out code
         uses: actions/checkout@v4
-        
+
       - name: Setup Cog
         uses: replicate/setup-cog@v2
         with:
           cog-version: "v0.14.4"
           token: ${{ secrets.REPLICATE_CLI_AUTH_TOKEN }}
-          install-cuda: true
+          install-cuda: false
 
       - name: Push to Replicate
         run: cog push r8.im/${{ inputs.model_name || vars.REPLICATE_MODEL }}
