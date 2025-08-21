@@ -81,7 +81,7 @@ class Predictor(BasePredictor):
         ae_dtype = "bf16"  # Inference data type of AutoEncoder
         diff_dtype = "bf16"  # Inference data type of Diffusion
 
-        model = create_SUPIR_model("options/SUPIR_v0_tiled.yaml", SUPIR_sign='Q')
+        model = create_SUPIR_model("options/SUPIR_v0_tiled.yaml", SUPIR_sign='F')
         if LOADING_HALF_PARAMS:
             model = model.half()
         if USE_TILE_VAE:
