@@ -85,7 +85,7 @@ class Predictor(BasePredictor):
         if LOADING_HALF_PARAMS:
             model = model.half()
         if USE_TILE_VAE:
-            model = model.init_tile_vae(encoder_tile_size=512, decoder_tile_size=64)
+            model.init_tile_vae(encoder_tile_size=512, decoder_tile_size=64)
         self.model = model.to(self.supir_device)
         self.model.first_stage_model.denoise_encoder_s1 = copy.deepcopy(self.model.first_stage_model.denoise_encoder)
 
