@@ -26,13 +26,13 @@ LLAVA_CLIP_URL = (
 #SDXL_URL = "https://weights.replicate.delivery/default/stable-diffusion-xl-base-1.0/sd_xl_base_1.0_0.9vae.safetensors"
 SDXL_URL = "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
 SDXL_CLIP1_URL = "https://weights.replicate.delivery/default/clip-vit-large-patch14.tar"
-SDXL_CLIP2_URL = "https://weights.replicate.delivery/default/CLIP-ViT-bigG-14-laion2B-39B-b160k.tar"
+SDXL_CLIP2_URL = "https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k/resolve/main/open_clip_pytorch_model.bin"
 
 MODEL_CACHE = "/opt/data/private/AIGC_pretrain/"  # Follow the default in CKPT_PTH.py
 LLAVA_CLIP_PATH = CKPT_PTH.LLAVA_CLIP_PATH
 LLAVA_MODEL_PATH = CKPT_PTH.LLAVA_MODEL_PATH
 SDXL_CLIP1_PATH = CKPT_PTH.SDXL_CLIP1_PATH
-SDXL_CLIP2_CACHE = f"{MODEL_CACHE}/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+SDXL_CLIP2_CACHE = f"{MODEL_CACHE}/CLIP-ViT-bigG-14-laion2B-39B-b160k/open_clip_pytorch_model.bin"
 SDXL_CKPT = f"{MODEL_CACHE}/SDXL_cache/sd_xl_base_1.0_0.9vae.safetensors"
 SUPIR_CKPT_F = f"{MODEL_CACHE}/SUPIR_cache/SUPIR-v0F.ckpt"
 SUPIR_CKPT_Q = f"{MODEL_CACHE}/SUPIR_cache/SUPIR-v0Q.ckpt"
@@ -74,7 +74,7 @@ class Predictor(BasePredictor):
         if not os.path.exists(SDXL_CKPT):
             download_weights(SDXL_URL, SDXL_CKPT, extract=False)
         if not os.path.exists(SDXL_CLIP2_CACHE):
-            download_weights(SDXL_CLIP2_URL, SDXL_CLIP2_CACHE)
+            download_weights(SDXL_CLIP2_URL, SDXL_CLIP2_CACHE, extract=False)
 
         self.supir_device = "cuda:0"
         self.llava_device = "cuda:0"
