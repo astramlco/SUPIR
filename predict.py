@@ -4,6 +4,7 @@
 import os
 import subprocess
 import time
+import copy
 from omegaconf import OmegaConf
 from PIL import Image
 from cog import BasePredictor, Input, Path
