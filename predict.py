@@ -158,6 +158,17 @@ class Predictor(BasePredictor):
         spt_linear_s_stage2: float = Input(
             description="Start point of linearly increasing s_stage2.", default=0.0
         ),
+        output_format: str = Input(
+            description="Output image format.",
+            choices=["png", "jpeg"],
+            default="png",
+        ),
+        output_quality: int = Input(
+            description="Quality for JPEG output (1-100).",
+            ge=1,
+            le=100,
+            default=95,
+        ),
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
         ),
@@ -203,6 +214,12 @@ class Predictor(BasePredictor):
             control_scale_start=spt_linear_s_stage2,
         )
 
-        out_path = "/tmp/out.png"
-        Tensor2PIL(samples[0], h0, w0).save(out_path)
+        result_image = Tensor2PIL(samples[0], h0, w0)
+        if output_format == "jpeg":
+            out_path = "/tmp/out.jpeg"
+            result_image = result_image.convert("RGB")
+            result_image.save(out_path, quality=output_quality)
+        else:
+            out_path = "/tmp/out.png"
+            result_image.save(out_path)
         return Path(out_path)
