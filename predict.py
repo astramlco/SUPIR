@@ -29,7 +29,7 @@ SDXL_URL = "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Ju
 SDXL_CLIP1_URL = "https://weights.replicate.delivery/default/clip-vit-large-patch14.tar"
 SDXL_CLIP2_URL = "https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k/resolve/main/open_clip_pytorch_model.bin"
 
-MODEL_CACHE = "/opt/data/private/AIGC_pretrain/"  # Follow the default in CKPT_PTH.py
+MODEL_CACHE = "/src/weights/"  # Follow the default in CKPT_PTH.py
 LLAVA_CLIP_PATH = CKPT_PTH.LLAVA_CLIP_PATH
 LLAVA_MODEL_PATH = CKPT_PTH.LLAVA_MODEL_PATH
 SDXL_CLIP1_PATH = CKPT_PTH.SDXL_CLIP1_PATH
@@ -66,10 +66,10 @@ class Predictor(BasePredictor):
                 os.makedirs(model_dir)
         if not os.path.exists(SUPIR_CKPT_F):
             download_weights(SUPIR_v0F_URL, SUPIR_CKPT_F, extract=False)
-        if not os.path.exists(LLAVA_MODEL_PATH):
-            download_weights(LLAVA_URL, LLAVA_MODEL_PATH)
-        if not os.path.exists(LLAVA_CLIP_PATH):
-            download_weights(LLAVA_CLIP_URL, LLAVA_CLIP_PATH)
+        #if not os.path.exists(LLAVA_MODEL_PATH):
+        #    download_weights(LLAVA_URL, LLAVA_MODEL_PATH)
+        #if not os.path.exists(LLAVA_CLIP_PATH):
+        #    download_weights(LLAVA_CLIP_URL, LLAVA_CLIP_PATH)
         if not os.path.exists(SDXL_CLIP1_PATH):
             download_weights(SDXL_CLIP1_URL, SDXL_CLIP1_PATH)
         if not os.path.exists(SDXL_CKPT):
