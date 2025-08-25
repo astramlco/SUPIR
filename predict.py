@@ -4,7 +4,9 @@
 import os
 import subprocess
 import time
+import torch
 import copy
+import gc
 from omegaconf import OmegaConf
 from PIL import Image
 from cog import BasePredictor, Input, Path
@@ -25,7 +27,8 @@ LLAVA_CLIP_URL = (
     "https://weights.replicate.delivery/default/clip-vit-large-patch14-336.tar"
 )
 #SDXL_URL = "https://weights.replicate.delivery/default/stable-diffusion-xl-base-1.0/sd_xl_base_1.0_0.9vae.safetensors"
-SDXL_URL = "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+#SDXL_URL = "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+SDXL_URL = "https://huggingface.co/RunDiffusion/Juggernaut-XL-Lightning/resolve/main/Juggernaut_RunDiffusionPhoto2_Lightning_4Steps.safetensors"
 SDXL_CLIP1_URL = "https://weights.replicate.delivery/default/clip-vit-large-patch14.tar"
 SDXL_CLIP2_URL = "https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k/resolve/main/open_clip_pytorch_model.bin"
 
@@ -34,7 +37,7 @@ LLAVA_CLIP_PATH = CKPT_PTH.LLAVA_CLIP_PATH
 LLAVA_MODEL_PATH = CKPT_PTH.LLAVA_MODEL_PATH
 SDXL_CLIP1_PATH = CKPT_PTH.SDXL_CLIP1_PATH
 SDXL_CLIP2_CACHE = f"{MODEL_CACHE}/CLIP-ViT-bigG-14-laion2B-39B-b160k/open_clip_pytorch_model.bin"
-SDXL_CKPT = f"{MODEL_CACHE}/SDXL_cache/sd_xl_base_1.0_0.9vae.safetensors"
+SDXL_CKPT = f"{MODEL_CACHE}/SDXL_lightning_cache/Juggernaut_RunDiffusionPhoto2_Lightning_4Steps.safetensors"
 SUPIR_CKPT_F = f"{MODEL_CACHE}/SUPIR_cache/SUPIR-v0F.ckpt"
 SUPIR_CKPT_Q = f"{MODEL_CACHE}/SUPIR_cache/SUPIR-v0Q.ckpt"
 
@@ -60,12 +63,12 @@ class Predictor(BasePredictor):
         for model_dir in [
             MODEL_CACHE,
             f"{MODEL_CACHE}/SUPIR_cache",
-            f"{MODEL_CACHE}/SDXL_cache",
+            f"{MODEL_CACHE}/SDXL_lightning_cache",
         ]:
             if not os.path.exists(model_dir):
                 os.makedirs(model_dir)
-        if not os.path.exists(SUPIR_CKPT_F):
-            download_weights(SUPIR_v0F_URL, SUPIR_CKPT_F, extract=False)
+        if not os.path.exists(SUPIR_CKPT_Q):
+            download_weights(SUPIR_v0Q_URL, SUPIR_CKPT_Q, extract=False)
         #if not os.path.exists(LLAVA_MODEL_PATH):
         #    download_weights(LLAVA_URL, LLAVA_MODEL_PATH)
         #if not os.path.exists(LLAVA_CLIP_PATH):
@@ -82,12 +85,16 @@ class Predictor(BasePredictor):
         ae_dtype = "bf16"  # Inference data type of AutoEncoder
         diff_dtype = "bf16"  # Inference data type of Diffusion
 
-        model = create_SUPIR_model("options/SUPIR_v0_tiled.yaml", SUPIR_sign='F')
+        model = create_SUPIR_model("options/SUPIR_v0_Juggernautv9_lightning.yaml", SUPIR_sign='Q')
         if LOADING_HALF_PARAMS:
             model = model.half()
         if USE_TILE_VAE:
-            model.init_tile_vae(encoder_tile_size=512, decoder_tile_size=64)
+            model.init_tile_vae(encoder_tile_size=4096, decoder_tile_size=368)
         self.model = model.to(self.supir_device)
+        del model
+        gc.collect()
+        torch.cuda.empty_cache()
+
         self.model.first_stage_model.denoise_encoder_s1 = copy.deepcopy(self.model.first_stage_model.denoise_encoder)
 
         self.model.ae_dtype = convert_dtype(ae_dtype)
@@ -99,6 +106,7 @@ class Predictor(BasePredictor):
         else:
             self.llava_agent = None
 
+    @torch.no_grad()
     def predict(
         self,
         image: Path = Input(description="Low quality input image."),
@@ -112,7 +120,7 @@ class Predictor(BasePredictor):
             description="Number of steps for EDM Sampling Schedule.",
             ge=1,
             le=500,
-            default=50,
+            default=8,
         ),
         a_prompt: str = Input(
             description="Additive positive prompt for the inputs.",
@@ -141,7 +149,7 @@ class Predictor(BasePredictor):
             description=" Classifier-free guidance scale for prompts.",
             ge=1,
             le=20,
-            default=7.5,
+            default=2.0,
         ),
         s_stage2: float = Input(description="Control Strength of Stage2.", default=1.0),
         linear_CFG: bool = Input(
@@ -153,7 +161,7 @@ class Predictor(BasePredictor):
             default=False,
         ),
         spt_linear_CFG: float = Input(
-            description="Start point of linearly increasing CFG.", default=1.0
+            description="Start point of linearly increasing CFG.", default=2.0
         ),
         spt_linear_s_stage2: float = Input(
             description="Start point of linearly increasing s_stage2.", default=0.0
@@ -161,13 +169,13 @@ class Predictor(BasePredictor):
         output_format: str = Input(
             description="Output image format.",
             choices=["png", "jpeg"],
-            default="png",
+            default="jpeg",
         ),
         output_quality: int = Input(
             description="Quality for JPEG output (1-100).",
             ge=1,
             le=100,
-            default=95,
+            default=90,
         ),
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
